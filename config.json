@@ -1,0 +1,47 @@
+{
+	"coin": "ufo",
+	"debugLevel": 7,
+
+	"WalletUrl": "127.0.0.1:20002",
+	"WalletApiUrl": "http://127.0.0.1:10000/api/wallet",
+	"apikey":"aaaa1234",
+
+	"mongoDB": {
+		"url": "127.0.0.1:27017/ufodb",
+		"dbname":"ufodb",
+		"share":"share_t",
+		"block":"foundblock_t",
+		"miner":"minerinfo_t",
+		"sendtx":"sendtx_t",
+		"balance":"balance_t",
+		"user":"test",
+		"password":"test"
+	},
+	
+	"levelDB": "./.ufo.lvdb",
+	
+	"PoolIPPort": "0.0.0.0:8080",
+
+	"PoolId":0,
+	"ENonceLen":3,
+	
+	"httpIPPort": "0.0.0.0:8081",
+	"limitHeadersSize": 1024,
+	"limitBodySize": 256,
+
+	"timeout": "12000s",
+
+	"SecondsPerShare":1,
+	"WindowSize":60,
+
+	"StartDiff":0.5,
+	"MinDiff":256,
+	"MaxDiff":268435456,
+
+	"RewardPeriod":900,
+	"OneBlockReward":500000000,
+	"SendMinUfo":500000000,
+	"SendRewardsTime":"10:00",
+	"HalveHeight":100000000,
+	"PoolFeeRate":1
+}
