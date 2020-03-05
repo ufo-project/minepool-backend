@@ -34,7 +34,7 @@
 	"SecondsPerShare":1,
 	"WindowSize":60,
 
-	"StartDiff":0.5,
+	"StartDiff":50,
 	"MinDiff":256,
 	"MaxDiff":268435456,
 
@@ -42,6 +42,6 @@
 	"OneBlockReward":500000000,
 	"SendMinUfo":500000000,
 	"SendRewardsTime":"10:00",
-	"HalveHeight":100000000,
+	"HalveHeight":1050000,
 	"PoolFeeRate":1
 }

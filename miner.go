@@ -324,11 +324,30 @@ func (miner *Miner) authorizeHandle(req *MinerRequest) error {
 		miner.workername = SplitName[1]
 	}
 
-	isvalid, err := validAddrress(miner.username)
-	if isvalid == false || err != nil {
-		Info.Println("authorizeHandle validAddrress,isvalid:", isvalid, ",error:", err)
-		miner.pool2MinerTrue(1, req.Id)
-		return err
+	ifvalid, exist := gPool.ValidAddress[miner.username]
+	if !exist {
+		isvalid, err := validAddrress(miner.username)
+
+		if err != nil {
+			Info.Println("authorizeHandle validAddrress,isvalid:", isvalid, ",error:", err)
+			miner.pool2MinerTrue(1, req.Id)
+			return err
+		}
+		if !isvalid {
+			Info.Println("authorizeHandle validAddrress,isvalid:", isvalid, ",error:", err)
+			miner.pool2MinerTrue(1, req.Id)
+			gPool.ValidAddress[miner.username] = isvalid
+			return err
+		} else {
+			gPool.ValidAddress[miner.username] = isvalid
+		}
+	} else {
+		if ifvalid == false {
+			Info.Println("authorizeHandle validAddrress has existed,isvalid:false")
+			miner.pool2MinerTrue(1, req.Id)
+			errors.New("")
+			return errors.New("authorizeHandle validAddrress has existed,isvalid:false")
+		}
 	}
 
 	miner.isAuthorize = true

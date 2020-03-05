@@ -324,7 +324,7 @@ func (pool *Pool) UpdateAddrBalance(session *mgo.Session) int64 {
 						Warning.Println("UpdateAddrBalance:addrbalance_t collection insert error:", err.Error())
 						continue
 					}
-				} else if len(item) ==1 {
+				} else if len(item) == 1 {
 					data := bson.M{"$set": bson.M{"balance": item[0].Balance+v,"updatetime":time.Now().Unix()}}
 					err := addrbalance_t.UpdateId(item[0].Id, data)
 					if err != nil {
@@ -525,8 +525,8 @@ func (pool *Pool) CheckTxs(session *mgo.Session) {
 
 	sendtx_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.SendTx)
 	var txinfos []SendTx_t
-	sendtx_t.Find(bson.M{"txstate": bson.M{"$in": []int64{0, 1, 5}}}).All(&txinfos)
-	totalnum, err := sendtx_t.Find(bson.M{"txstate": bson.M{"$in": []int64{0, 1, 5}}}).Count()
+	sendtx_t.Find(bson.M{"txstate": bson.M{"$in": []int64{0, 1, 5, -1}}}).All(&txinfos)
+	totalnum, err := sendtx_t.Find(bson.M{"txstate": bson.M{"$in": []int64{0, 1, 5, -1}}}).Count()
 	if err != nil {
 		Warning.Println("CheckTxs:sendtx_t collection get count error:", err)
 		return

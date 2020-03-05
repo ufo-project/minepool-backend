@@ -71,6 +71,7 @@ func InitPool() {
 	gPool.timeout = ParseDuration(cfg.Timeout)
 
 	gPool.Jobs = make(map[string]Job)
+	gPool.ValidAddress = make(map[string]bool)
 
 	if cfg.ENonceLen < 2 || cfg.ENonceLen > 4 {
 		Warning.Printf("Error: ENonceLen:%d out of range [2,3,4]", cfg.ENonceLen)

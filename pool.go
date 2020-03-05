@@ -80,6 +80,7 @@ type Pool struct {
 	WalletCheckInterval time.Duration
 
 	SubmitSol chan Response
+	ValidAddress map[string]bool
 }
 
 func (pool *Pool) ListenTCP() {
