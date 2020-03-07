@@ -37,24 +37,25 @@ type Config struct {
 	MinDiff   float64 `json:"MinDiff"`
 	MaxDiff   float64 `json:"MaxDiff"`
 
-	RewardPeriod int64 `json:"RewardPeriod"`
-	OneBlockReward int64 `json:"OneBlockReward"`
-	SendMinUfo int64 `json:"SendMinUfo"`
-	HalveHeight int64 `json:"HalveHeight"`
+	RewardPeriod    int64  `json:"RewardPeriod"`
+	OneBlockReward  int64  `json:"OneBlockReward"`
+	SendMinUfo      int64  `json:"SendMinUfo"`
+	HalveHeight     int64  `json:"HalveHeight"`
 	SendRewardsTime string `json:"SendRewardsTime"`
-	PoolFeeRate int64 `json:"PoolFeeRate"`
+	TxFee           int64  `json:"TxFee"`
+	PoolFeeRate     int64  `json:"PoolFeeRate"`
 }
 
 type MongoDb struct {
-	Url       string `json:"url"`
-	DBname    string `json:"dbname"`
-	ShareCol  string `json:"share"`
-	BlockCol  string `json:"block"`
-	MinerInfo string `json:"miner"`
-	SendTx    string `json:"sendtx"`
-	AddrBalance    string `json:"balance"`
-	User      string `json:"user"`
-	Password  string `json:"password"`
+	Url         string `json:"url"`
+	DBname      string `json:"dbname"`
+	ShareCol    string `json:"share"`
+	BlockCol    string `json:"block"`
+	MinerInfo   string `json:"miner"`
+	SendTx      string `json:"sendtx"`
+	AddrBalance string `json:"balance"`
+	User        string `json:"user"`
+	Password    string `json:"password"`
 }
 
 func LoadConfig(cfgFileName string, cfg *Config) {

@@ -43,5 +43,6 @@
 	"SendMinUfo":500000000,
 	"SendRewardsTime":"10:00",
 	"HalveHeight":1050000,
-	"PoolFeeRate":1
+	"TxFee":100,
+	"PoolFeeRate":5
 }

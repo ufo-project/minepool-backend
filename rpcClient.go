@@ -118,6 +118,7 @@ func sendTx(amount int64, toaddr string) (txId string, err error) {
 	var reqparams sendtxParams
 	reqparams.Value = amount
 	reqparams.Address = toaddr
+	reqparams.Fee = cfg.TxFee
 	reqSendtx.Params = reqparams
 	bytesData, err := json.Marshal(reqSendtx)
 	if err != nil {
