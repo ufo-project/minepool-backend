@@ -224,12 +224,14 @@ func QueryUserHandler(res http.ResponseWriter, req *http.Request) {
 }
 
 type TotalInfo struct {
+	TotalPoolPower   string `json:"totalpoolpower"`
 	TotalPower    string `json:"totalpower"`
 	TotalUsers    int    `json:"totalusers"`
 	TotalWorker   int    `json:"totalworkers"`
 	CurrentHeight int64  `json:"currentheight"`
 	CurrentDiff   string `json:"currentdiff"`
 	TotalRewards  string `json:"totalrewards"`
+	TotalSentRewards string `json:"totalsentrewards"`
 }
 
 func QueryTotalInfoHandler(res http.ResponseWriter, req *http.Request) {
@@ -244,14 +246,14 @@ func QueryTotalInfoHandler(res http.ResponseWriter, req *http.Request) {
 	Info.Println("QueryTotalInfoHandler:")
 
 	gPool.minersLock.RLock()
-	var totalpower float64
+	var totalpoolpower, totalpower float64
 	for miner, _ := range gPool.miners {
 		if _, isFound := userMap[miner.username]; !isFound {
 			userMap[miner.username] = 1
 			Info.Println(miner.username)
 		}
 		totalinfo.TotalWorker++
-		totalpower += float64(miner.acceptShare) / 1000 / 1000 / time.Since(miner.onlineTime).Seconds() * 4 * 1024 * 1024 * 1024
+		totalpoolpower += float64(miner.acceptShare) / 1000 / 1000 / time.Since(miner.onlineTime).Seconds() * 4 * 1024 * 1024 * 1024
 	}
 
 	session, err := mgo.Dial(gPool.cfg.MongoDB.Url)
@@ -265,15 +267,29 @@ func QueryTotalInfoHandler(res http.ResponseWriter, req *http.Request) {
 	foundblocks_t := session.DB(gPool.cfg.MongoDB.DBname).C(gPool.cfg.MongoDB.BlockCol)
 	blockcount, _ := foundblocks_t.Find(nil).Count()
 
+	var senttxs []SendTx_t
+	var totalsentrewards int64
+	sendtxs_t := session.DB(gPool.cfg.MongoDB.DBname).C(gPool.cfg.MongoDB.SendTx)
+	sendtxs_t.Find(bson.M{"txstate": 3}).All(&senttxs)
+	if len(senttxs) == 0 {
+		totalinfo.TotalSentRewards = "0"
+	} else {
+		for _, item := range senttxs {
+			totalsentrewards += item.Amount
+		}
+	}
+
 	gPool.minersLock.RUnlock()
+	totalinfo.TotalPoolPower = fmt.Sprintf("%f MHash/s", totalpoolpower)
 	totalinfo.TotalUsers = len(userMap)
 
 	currdiff, _ := strconv.ParseFloat(gPool.LastJob.netDiffStr, 64)
 	totalinfo.CurrentDiff = fmt.Sprintf("%f", float64(currdiff*256))
-	//totalpower = math.Pow(2, 24) * currdiff / 60 / 1024 / 1024 * 256
-	//totalinfo.TotalPower = fmt.Sprintf("%fM/s", totalpower)
+	totalpower = math.Pow(2, 24) * currdiff / 60 / 1024 / 1024 * 256
+	totalinfo.TotalPower = fmt.Sprintf("%f MHash/s", totalpower)
 	totalinfo.CurrentHeight = gPool.height - 1
 	totalinfo.TotalRewards = fmt.Sprintf("%.02f", float64(int64(blockcount)*cfg.OneBlockReward/100000000))
+	totalinfo.TotalSentRewards = fmt.Sprintf("%.02f", float64(int64(totalsentrewards)/100000000))
 
 	userJson, err := json.Marshal(&totalinfo)
 	if err != nil {
@@ -640,6 +656,7 @@ func QueryMinerInfoHandler(res http.ResponseWriter, req *http.Request) {
 
 		workerinfo.ValidShares = int64(totalvalidshares)
 		workerinfo.InvalidShares = int64(totalinvalidshares)
+		totalRewards = totalRewards * (100 - cfg.PoolFeeRate) / 100
 		workerinfo.TotalRewards = fmt.Sprintf("%.08f", float64(totalRewards)/100000000)
 		workerinfo.SentRewards = fmt.Sprintf("%.08f", float64(sentRewards)/100000000)
 

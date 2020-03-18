@@ -19,7 +19,7 @@ type MinerRequest struct {
 type MinerRequest2 struct {
 	Id        int           `json:"id"`
 	Method    string        `json:"method"`
-	Minertype string        `json:"minertype"`
+	Minertype string        `json:"minertype,omitempty"`
 	Miner     string        `json:"miner"`
 	JobID     string        `json:"jobid"`
 	Nonce     string        `json:"nonce"`

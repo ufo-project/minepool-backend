@@ -191,8 +191,11 @@ func (pool *Pool) broadcastNewJobs(jobid, prehash, input string) {
 			}
 
 			var respStr string
-			respStr = fmt.Sprintf("{\"jobid\":\"%s\",\"prev\":\"%s\",\"input\":\"%s\",\"id\":\"1\",\"jsonrpc\":\"2.0\",\"method\":\"mining_notify\"}\n", jobid, prehash, input)
-
+			if miner.minertype == "cpu" {
+				respStr = fmt.Sprintf("{\"jobid\":\"%s\",\"prev\":\"%s\",\"input\":\"%s\",\"id\":\"1\",\"jsonrpc\":\"2.0\",\"method\":\"mining_notify\"}\n", jobid, prehash, input)
+			} else {
+				respStr = fmt.Sprintf("{\"id\":null,\"method\":\"mining.notify\",\"params\":[\"%s\",\"%s\",\"%s\",true]}\n", jobid, prehash, input)
+			}
 			pool.LastNotify = respStr
 			_, err := miner.conn.Write([]byte(respStr))
 			miner.Unlock()

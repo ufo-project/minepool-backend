@@ -42,8 +42,9 @@ type Config struct {
 	SendMinUfo      int64  `json:"SendMinUfo"`
 	HalveHeight     int64  `json:"HalveHeight"`
 	SendRewardsTime string `json:"SendRewardsTime"`
-	TxFee           int64  `json:"TxFee"`
+	ReSendTime string `json:"ReSendTime"`
 	PoolFeeRate     int64  `json:"PoolFeeRate"`
+	TxFee       int64 `json:"TxFee"`
 }
 
 type MongoDb struct {

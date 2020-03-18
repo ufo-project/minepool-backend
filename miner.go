@@ -148,11 +148,11 @@ func (miner *Miner) handleTCPMessage(req *MinerRequest) error {
 	Info.Println("handleTCPMessage.")
 	var err error
 	switch req.Method {
-	case "mining_subscribe":
+	case "mining_subscribe", "mining.subscribe":
 		err = miner.subscribeHandle(req)
-	case "mining_authorize":
+	case "mining_authorize", "mining.authorize":
 		err = miner.authorizeHandle(req)
-	case "mining_submit":
+	case "mining_submit", "mining.submit":
 		err = miner.submitHandle(req)
 	default:
 		Info.Println(miner.workername, "  ", miner.IP, " miner reqest "+req.Method+" not implemented!")
@@ -191,10 +191,29 @@ func (miner *Miner) submitHandle(req *MinerRequest) error {
 		return errors.New("don't Authorize")
 	}
 
-	var jobID, nonce string
-	jobID = req.JobID
-	nonce = req.Nonce
+	if len(req.Params) < 2 && miner.minertype != "cpu" {
+		Info.Println("submitHandle param len < 2")
+		return errors.New("submitHandle param len < 2")
+	}
 
+	var jobID, nonce string
+	var ok bool
+	if miner.minertype == "cpu" {
+		jobID = req.JobID
+		nonce = req.Nonce
+	} else {
+		jobID, ok = req.Params[0].(string)
+		if !ok {
+			Info.Println("submitHandle param 0 error")
+			return errors.New("submitHandle param 0 error")
+		}
+
+		nonce, ok = req.Params[1].(string)
+		if !ok {
+			Info.Println("submitHandle param 1 error")
+			return errors.New("submitHandle param 1 error")
+		}
+	}
 
 	nonceStr := miner.ENonce + strings.ToLower(nonce)
 	if len(nonceStr) != 16 {
@@ -289,7 +308,11 @@ func (miner *Miner) subscribeHandle(req *MinerRequest) error {
 
 	miner.isSubscribe = true
 	miner.dc = newDiffController(miner.diff)
-	miner.minertype = req.Minertype
+	if req.Method == "mining.subscribe" {
+		miner.minertype = "gpu"
+	} else {
+		miner.minertype = req.Minertype
+	}
 
 	miner.pool.addMiner(miner)
 
@@ -313,7 +336,22 @@ func (miner *Miner) authorizeHandle(req *MinerRequest) error {
 	}
 
 	name := ""
-	name = req.Miner
+	ok := true
+
+	if req.Method == "mining.authorize" {
+		miner.minertype = "gpu"
+	} else {
+		miner.minertype = "cpu"
+	}
+	if miner.minertype != "cpu" {
+		name, ok = req.Params[0].(string)
+		if !ok {
+			Info.Println("authorizeHandle param 0 error")
+			return errors.New("submitHandle param 0 error")
+		}
+	} else {
+		name = req.Miner
+	}
 
 	usernameLower := strings.ToLower(name)
 	username := strings.Replace(usernameLower, "0x", "", -1)
@@ -360,8 +398,11 @@ func (miner *Miner) authorizeHandle(req *MinerRequest) error {
 	defer miner.pool.JobsLock.RUnlock()
 
 	notifyStr := ""
-	notifyStr = fmt.Sprintf("{\"jobid\":\"%s\",\"prev\":\"%s\",\"input\":\"%s\",\"id\":\"1\",\"jsonrpc\":\"2.0\",\"method\":\"mining_notify\"}\n", miner.pool.LastJob.Id, miner.pool.LastJob.PrevHash, miner.pool.LastJob.Input)
-
+	if miner.minertype == "cpu" {
+		notifyStr = fmt.Sprintf("{\"jobid\":\"%s\",\"prev\":\"%s\",\"input\":\"%s\",\"id\":\"1\",\"jsonrpc\":\"2.0\",\"method\":\"mining_notify\"}\n", miner.pool.LastJob.Id, miner.pool.LastJob.PrevHash, miner.pool.LastJob.Input)
+	} else {
+		notifyStr = fmt.Sprintf("{\"id\":1,\"method\":\"mining.notify\",\"params\":[\"%s\",\"%s\",\"%s\",true]}\n", miner.pool.LastJob.Id, miner.pool.LastJob.PrevHash, miner.pool.LastJob.Input)
+	}
 	miner.SendNotify(notifyStr)
 
 	Info.Printf("welcome miner:%s.%s@%s:%s", miner.username, miner.workername, miner.IP, miner.Port)
@@ -371,16 +412,25 @@ func (miner *Miner) authorizeHandle(req *MinerRequest) error {
 
 func (miner *Miner) pool2MinerTrue(code int, id string) error {
 	msg := ""
-	msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"code\":%d,\"method\":\"mining_authorize_result\"}\n", id, code)
 
+	if miner.minertype == "cpu" {
+		msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"code\":%d,\"method\":\"mining_authorize_result\"}\n", id, code)
+	} else {
+		idInt, _ := strconv.Atoi(id)
+		msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":true,\"error\":null}\n", idInt)
+	}
 	return miner.SendMessageToMiner(msg)
 }
 
 func (miner *Miner) pool2SubmitMinerTrue(id string) error {
 	msg := ""
 
-	msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"code\":0,\"method\":\"mining_submit_result\"}\n", id)
-
+	if miner.minertype == "cpu" {
+		msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"code\":0,\"method\":\"mining_submit_result\"}\n", id)
+	} else {
+		idInt, _ := strconv.Atoi(id)
+		msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":true,\"error\":null}\n", idInt)
+	}
 	return miner.SendMessageToMiner(msg)
 }
 
@@ -388,7 +438,12 @@ func (miner *Miner) pool2MinerError(id string, code int) error {
 
 	msg := ""
 
-	msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"code\":%d,\"method\":\"mining_submit_result\"}\n", id, code)
+	if miner.minertype == "cpu" {
+		msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"code\":%d,\"method\":\"mining_submit_result\"}\n", id, code)
+	} else {
+		idInt, _ := strconv.Atoi(id)
+		msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":false,\"error\":[%d,\"%s\"]}\n", idInt, code, GetErrorCodeString(code))
+	}
 
 	return miner.SendMessageToMiner(msg)
 }
@@ -399,7 +454,13 @@ func (miner *Miner) SubscribeResponse(id string, ENonce string) error {
 	msg := ""
 
 	code := 0
-	msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"code\":%d,\"enonce\":\"%s\",\"method\":\"mining_subscribe_result\"}\n", id, code, ENonce)
+	if miner.minertype == "cpu" {
+		msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"code\":%d,\"enonce\":\"%s\",\"method\":\"mining_subscribe_result\"}\n", id, code, ENonce)
+	} else {
+		idInt, _ := strconv.Atoi(id)
+
+		msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":[\"%s\"],\"error\":null}\n", idInt, ENonce)
+	}
 
 	return miner.SendMessageToMiner(msg)
 }
@@ -412,8 +473,12 @@ func (miner *Miner) SetDifficulty() error {
 
 	msg := ""
 
-	diffStr := fmt.Sprintf("%f", miner.diff*256)
-	msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"difficulty\":\"%s\",\"method\":\"mining_set_difficulty\"}\n", diffStr)
+	if miner.minertype == "cpu" {
+		diffStr := fmt.Sprintf("%f", miner.diff*256)
+		msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"difficulty\":\"%s\",\"method\":\"mining_set_difficulty\"}\n", diffStr)
+	} else {
+		msg = fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"mining.set_difficulty\",\"params\":[%f]}\n", miner.diff*256)
+	}
 
 	return miner.SendMessageToMiner(msg)
 }

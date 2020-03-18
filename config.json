@@ -40,8 +40,9 @@
 
 	"RewardPeriod":900,
 	"OneBlockReward":500000000,
-	"SendMinUfo":500000000,
+	"SendMinUfo":100000000,
 	"SendRewardsTime":"10:00",
+	"ReSendTime":"16:00",
 	"HalveHeight":1050000,
 	"TxFee":100,
 	"PoolFeeRate":5

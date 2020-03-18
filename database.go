@@ -113,6 +113,7 @@ type SendTx_t struct {
 	Amount   int64         `bson:"amount"`
 	SendTime int64         `bson:"sendtime"`
 	TxState  int64         `bson:"txstate"` //Pending(0), InProgress(1), Cancelled(2), Completed(3), Failed(4), Registering(5)
+	ResendFlag int64         `bson:"resendflag"`
 }
 
 func (miner *Miner) insertShareToLevelDB(key, valid, netDiff string) {
@@ -340,8 +341,6 @@ func (pool *Pool) UpdateAddrBalance(session *mgo.Session) int64 {
 
 func (pool *Pool) SendReward(session *mgo.Session) int64 {
 	Info.Println("SendReward start.")
-	pool.minersLock.RLock()
-	defer pool.minersLock.RUnlock()
 
 	var balances []AddrBalance_t
 	addrbalance_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.AddrBalance)
@@ -355,24 +354,162 @@ func (pool *Pool) SendReward(session *mgo.Session) int64 {
 		return 0
 	} else if len(balances) > 0 {
 		sendtx_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.SendTx)
-		for _,item := range balances {
-			txid, err := sendTx(item.Balance, item.Username)
-			if err != nil {
-				Warning.Println("sendReward:sendTx to:", item.Username, ",amount:", item.Balance, "error:", err.Error())
-				continue
+		var i int
+		for i=0; i< len(balances); {
+			walletbalance,_ := getWalletStatus()
+			var ten_item_balance int64
+			ten_item_balance = 0
+			endindex := 0
+			if i+10 > len(balances) {
+				endindex = len(balances)
+			} else {
+				endindex = i + 10
 			}
-			data := bson.M{"$set": bson.M{"balance": 0,"updatetime":time.Now().Unix()}}
-			err = addrbalance_t.UpdateId(item.Id, data)
-			if err != nil {
-				Warning.Println("sendReward:addrbalance_t.Update balance:", 0, "err:", err.Error())
+			for j:=i;j<endindex;j++ {
+				ten_item_balance += balances[j].Balance
 			}
-			sendonetx := &SendTx_t{Id: bson.NewObjectId(), TxId: txid, Username: item.Username, Amount: item.Balance, SendTime: time.Now().Unix(), TxState: 0, Worker: item.Worker}
-			err = sendtx_t.Insert(sendonetx)
-			Info.Println("sendReward:sendtx_t. before Insert usernanme:", item.Username, ",workname:", item.Worker, ",amount:", item.Balance)
-			if err != nil {
-				Warning.Println("sendReward:sendtx_t.Insert usernanme:", item.Username, ",workname:", item.Worker, ",amount:", item.Balance, "error:", err.Error())
-				continue
+			if walletbalance < ten_item_balance {
+				Alert.Println("Wallet have no enough balance.")
+				return 0
 			}
+
+			var txids []string
+			for k:=i;k<endindex;k++ {
+				txid, err := sendTx(balances[k].Balance, balances[k].Username)
+				if err != nil {
+					Warning.Println("sendReward:sendTx to:", balances[k].Username, ",amount:", balances[k].Balance, "error:", err.Error())
+					continue
+				}
+				data := bson.M{"$set": bson.M{"balance": 0, "updatetime": time.Now().Unix()}}
+				err = addrbalance_t.UpdateId(balances[k].Id, data)
+				if err != nil {
+					Warning.Println("sendReward:addrbalance_t.Update balance:", 0, "err:", err.Error())
+				}
+				sendonetx := &SendTx_t{Id: bson.NewObjectId(), TxId: txid, Username: balances[k].Username, Amount: balances[k].Balance, SendTime: time.Now().Unix(), TxState: 0, Worker: balances[k].Worker, ResendFlag: 0}
+				err = sendtx_t.Insert(sendonetx)
+				Info.Println("sendReward:sendtx_t. before Insert usernanme:", balances[k].Username, ",workname:", balances[k].Worker, ",amount:", balances[k].Balance)
+				if err != nil {
+					Warning.Println("sendReward:sendtx_t.Insert usernanme:", balances[k].Username, ",workname:", balances[k].Worker, ",amount:", balances[k].Balance, "error:", err.Error())
+					continue
+				}
+				txids = append(txids, txid)
+			}
+
+			time.Sleep(time.Minute * 10)
+
+			for _,item := range txids {
+				txstate,err := getTxState(item)
+				if err != nil {
+					Warning.Println("sendReward:getTxState. txid:", item, "error:", err.Error())
+					continue
+				}
+				if txstate == 1 {
+					success,err := cancelTx(item)
+					if err != nil {
+						Warning.Println("sendReward:cancelTx txid:", item, "error:", err.Error())
+						continue
+					}
+					if success {
+						selector := bson.M{"txid": item}
+						data := bson.M{"$set": bson.M{"txstate": 4}}
+						err := sendtx_t.Update(selector, data)
+						if err != nil {
+							Warning.Println("CheckTxs:sendtx_t.Update:", 4, "err:", err)
+							return -1
+						}
+					}
+				}
+			}
+
+			i += 10
+		}
+	}
+
+	return 0
+}
+
+func (pool *Pool) ReSendTxs(session *mgo.Session) int64 {
+	Info.Println("ReSendTxs start.")
+
+	var failtxs []SendTx_t
+	sendtx_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.SendTx)
+	err := sendtx_t.Find(bson.M{"txstate": 4}).All(&failtxs)
+	if err != nil {
+		Warning.Println("ReSendTxs:sendtx_t collection get failed tx error:", err.Error())
+		return -1
+	}
+	if len(failtxs) == 0 {
+		Warning.Println("ReSendTxs:sendtx_t collection have no failed tx,do not need resend reward.")
+		return 0
+	} else if len(failtxs) > 0 {
+		var i int
+		for i=0; i< len(failtxs); {
+			walletbalance,_ := getWalletStatus()
+			var ten_item_amount int64
+			ten_item_amount = 0
+			endindex := 0
+			if i+10 > len(failtxs) {
+				endindex = len(failtxs)
+			} else {
+				endindex = i + 10
+			}
+			for j:=i;j<endindex;j++ {
+				ten_item_amount += failtxs[i].Amount
+			}
+			if walletbalance < ten_item_amount {
+				Alert.Println("ReSendTxs:Wallet have no enough balance.")
+				return 0
+			}
+
+			var txids []string
+			for k:=i;k<endindex;k++ {
+				txid, err := sendTx(failtxs[k].Amount, failtxs[k].Username)
+				if err != nil {
+					Warning.Println("ReSendTxs:sendTx to:", failtxs[k].Username, ",amount:", failtxs[k].Amount, "error:", err.Error())
+					continue
+				}
+				data := bson.M{"$set": bson.M{"txstate": 100,"sendtime":time.Now().Unix()}}
+				err = sendtx_t.UpdateId(failtxs[k].Id, data)
+				if err != nil {
+					Warning.Println("dealFailTx:senttx_t.Update txstate:", 100, "err:", err.Error())
+				}
+				sendonetx := &SendTx_t{Id: bson.NewObjectId(), TxId: txid, Username: failtxs[k].Username, Amount: failtxs[k].Amount, SendTime: time.Now().Unix(), TxState: 0, Worker: failtxs[k].Worker, ResendFlag: 1}
+				err = sendtx_t.Insert(sendonetx)
+				Info.Println("ReSendTxs:sendtx_t. before Insert usernanme:", failtxs[k].Username, ",workname:", failtxs[k].Worker, ",amount:", failtxs[k].Amount)
+				if err != nil {
+					Warning.Println("ReSendTxs:sendtx_t.Insert usernanme:", failtxs[k].Username, ",workname:", failtxs[k].Worker, ",amount:", failtxs[k].Amount, "error:", err.Error())
+					continue
+				}
+				txids = append(txids, txid)
+			}
+
+			time.Sleep(time.Minute * 10)
+
+			for _,item := range txids {
+				txstate,err := getTxState(item)
+				if err != nil {
+					Warning.Println("ReSendTxs:getTxState. txid:", item, "error:", err.Error())
+					continue
+				}
+				if txstate == 1 {
+					success,err := cancelTx(item)
+					if err != nil {
+						Warning.Println("ReSendTxs:cancelTx txid:", item, "error:", err.Error())
+						continue
+					}
+					if success {
+						selector := bson.M{"txid": item}
+						data := bson.M{"$set": bson.M{"txstate": 4}}
+						err := sendtx_t.Update(selector, data)
+						if err != nil {
+							Warning.Println("ReSendTxs:sendtx_t.Update:", 4, "err:", err)
+							return -1
+						}
+					}
+				}
+			}
+
+			i += 10
 		}
 	}
 
@@ -511,10 +648,22 @@ func SendRewards(pool *Pool) {
 	}
 }
 
+func ReSendTx(pool *Pool) {
+	Info.Println("ReSendTx.")
+	session := pool.GetSession()
+	if session == nil {
+		Alert.Fatalln("GetSession is nil")
+	} else {
+		pool.ReSendTxs(session)
+		session.Close()
+	}
+}
+
 func (pool *Pool) SendRewardToUsers() {
 	Info.Println("SendRewardToUsers.")
 
 	gocron.Every(1).Day().At(cfg.SendRewardsTime).Do(SendRewards, pool)
+	gocron.Every(1).Day().At(cfg.ReSendTime).Do(ReSendTx, pool)
 	<-gocron.Start()
 }
 

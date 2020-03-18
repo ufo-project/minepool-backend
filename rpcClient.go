@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
+	"strings"
 )
 
 type getUtxoRequest struct {
@@ -26,7 +27,7 @@ type getUtxoResult struct {
 	Amount        int64  `json:"amount"`
 	CreateTxId    string `json:"createTxId"`
 	Id            string `json:"id"`
-	Maturity      int64  `json:"maturity"`
+	Maturity      uint64  `json:"maturity"`
 	Session       int64  `json:"session"`
 	SpentTxId     string `json:"spentTxId"`
 	Status        int64  `json:"status"`
@@ -54,8 +55,7 @@ func GetUtxos() (balance int64, err error) {
 		Warning.Println("Unmarshal Response error:", err)
 		return 0, err
 	}
-
-	if res.Error.Message != "" {
+	if strings.Contains(string(body),"error") {
 		err = errors.New(res.Error.Message)
 		return 0, err
 	}
@@ -75,6 +75,59 @@ func GetUtxos() (balance int64, err error) {
 	}
 
 	return totalAmount, nil
+}
+
+type getWalletStatusRequest struct {
+	JsonRpc string `json:"jsonrpc"`
+	Id      int64  `json:"id"`
+	Method  string `json:"method"`
+}
+
+type getWalletStatusResponse struct {
+	JsonRpc string          `json:"jsonrpc"`
+	Id      int64           `json:"id"`
+	Result  getWalletStatusResult `json:"result,omitempty"`
+	Error   ErrorInfo       `json:"error,omitempty"`
+}
+
+type getWalletStatusResult struct {
+	Current_height        int64  `json:"current_height"`
+	Current_state_hash    string `json:"current_state_hash"`
+	Prev_state_hash            string `json:"prev_state_hash"`
+	Available      int64  `json:"available"`
+	Receiving       int64  `json:"receiving"`
+	Sending     int64 `json:"sending"`
+	Maturing        int64  `json:"maturing"`
+	Locked int64 `json:"locked"`
+	Difficulty          float64 `json:"difficulty"`
+}
+
+func getWalletStatus() (balance int64, err error) {
+	var reqUtxo getUtxoRequest
+	reqUtxo.Method = "wallet_status"
+	reqUtxo.JsonRpc = "2.0"
+	reqUtxo.Id = 1
+
+	client := &http.Client{}
+	bytesData, _ := json.Marshal(reqUtxo)
+	req, _ := http.NewRequest("POST", cfg.WalletApiUrl, bytes.NewReader(bytesData))
+	resp, _ := client.Do(req)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(body))
+
+	var res getWalletStatusResponse
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		Warning.Println("Unmarshal Response error:", err.Error())
+		return 0, err
+	}
+	if strings.Contains(string(body),"error") {
+		err = errors.New(res.Error.Message)
+		return 0, err
+	}
+
+	return res.Result.Available, nil
 }
 
 type sendTxRequest struct {
@@ -280,4 +333,47 @@ func getTxState(txid string) (state int64, err error) {
 	}
 
 	return res.Result.Status, nil
+}
+
+type CancelTxResponse struct {
+	JsonRpc string        `json:"jsonrpc"`
+	Id      int64         `json:"id"`
+	Result  bool `json:"result,omitempty"`
+	Error   ErrorInfo     `json:"error,omitempty"`
+}
+
+func cancelTx(txid string) (success bool, err error) {
+	client := &http.Client{}
+	var cancelTx checkTxRequest
+	cancelTx.JsonRpc = "2.0"
+	cancelTx.Id = 1
+	cancelTx.Method = "tx_cancel"
+	var reqparams checkTxParams
+	reqparams.TxId = txid
+	cancelTx.Params = reqparams
+	bytesData, _ := json.Marshal(cancelTx)
+	req, _ := http.NewRequest("POST", cfg.WalletApiUrl, bytes.NewReader(bytesData))
+	resp, _ := client.Do(req)
+	if resp != nil {
+		defer resp.Body.Close()
+	} else {
+		err = errors.New("Connect wallet-api faild,please check.")
+		return false, err
+	}
+	body, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(body))
+
+	var res CancelTxResponse
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		Warning.Println("Unmarshal Response error:", err)
+		return false, err
+	}
+
+	if res.Error.Message != "" {
+		err = errors.New(res.Error.Message)
+		return false, err
+	}
+
+	return res.Result, nil
 }
