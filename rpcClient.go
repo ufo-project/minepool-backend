@@ -11,9 +11,15 @@ import (
 )
 
 type getUtxoRequest struct {
-	JsonRpc string `json:"jsonrpc"`
-	Id      int64  `json:"id"`
-	Method  string `json:"method"`
+	JsonRpc string       `json:"jsonrpc"`
+	Id      int64        `json:"id"`
+	Method  string       `json:"method"`
+	Params  sendtxParams `json:"params"`
+}
+
+type getUtxoParams struct {
+	Value int64 `json:"count"`
+	Fee   int64 `json:"skip"`
 }
 
 type getUtxoResponse struct {
@@ -27,7 +33,7 @@ type getUtxoResult struct {
 	Amount        int64  `json:"amount"`
 	CreateTxId    string `json:"createTxId"`
 	Id            string `json:"id"`
-	Maturity      uint64  `json:"maturity"`
+	Maturity      uint64 `json:"maturity"`
 	Session       int64  `json:"session"`
 	SpentTxId     string `json:"spentTxId"`
 	Status        int64  `json:"status"`
@@ -55,7 +61,7 @@ func GetUtxos() (balance int64, err error) {
 		Warning.Println("Unmarshal Response error:", err)
 		return 0, err
 	}
-	if strings.Contains(string(body),"error") {
+	if strings.Contains(string(body), "error") {
 		err = errors.New(res.Error.Message)
 		return 0, err
 	}
@@ -84,22 +90,22 @@ type getWalletStatusRequest struct {
 }
 
 type getWalletStatusResponse struct {
-	JsonRpc string          `json:"jsonrpc"`
-	Id      int64           `json:"id"`
+	JsonRpc string                `json:"jsonrpc"`
+	Id      int64                 `json:"id"`
 	Result  getWalletStatusResult `json:"result,omitempty"`
-	Error   ErrorInfo       `json:"error,omitempty"`
+	Error   ErrorInfo             `json:"error,omitempty"`
 }
 
 type getWalletStatusResult struct {
-	Current_height        int64  `json:"current_height"`
-	Current_state_hash    string `json:"current_state_hash"`
-	Prev_state_hash            string `json:"prev_state_hash"`
-	Available      int64  `json:"available"`
-	Receiving       int64  `json:"receiving"`
-	Sending     int64 `json:"sending"`
-	Maturing        int64  `json:"maturing"`
-	Locked int64 `json:"locked"`
-	Difficulty          float64 `json:"difficulty"`
+	Current_height     int64   `json:"current_height"`
+	Current_state_hash string  `json:"current_state_hash"`
+	Prev_state_hash    string  `json:"prev_state_hash"`
+	Available          int64   `json:"available"`
+	Receiving          int64   `json:"receiving"`
+	Sending            int64   `json:"sending"`
+	Maturing           int64   `json:"maturing"`
+	Locked             int64   `json:"locked"`
+	Difficulty         float64 `json:"difficulty"`
 }
 
 func getWalletStatus() (balance int64, err error) {
@@ -122,7 +128,7 @@ func getWalletStatus() (balance int64, err error) {
 		Warning.Println("Unmarshal Response error:", err.Error())
 		return 0, err
 	}
-	if strings.Contains(string(body),"error") {
+	if strings.Contains(string(body), "error") {
 		err = errors.New(res.Error.Message)
 		return 0, err
 	}
@@ -336,10 +342,10 @@ func getTxState(txid string) (state int64, err error) {
 }
 
 type CancelTxResponse struct {
-	JsonRpc string        `json:"jsonrpc"`
-	Id      int64         `json:"id"`
-	Result  bool `json:"result,omitempty"`
-	Error   ErrorInfo     `json:"error,omitempty"`
+	JsonRpc string    `json:"jsonrpc"`
+	Id      int64     `json:"id"`
+	Result  bool      `json:"result,omitempty"`
+	Error   ErrorInfo `json:"error,omitempty"`
 }
 
 func cancelTx(txid string) (success bool, err error) {

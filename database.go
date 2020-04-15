@@ -71,13 +71,14 @@ func (pool *Pool) closeDB() {
 }
 
 type Share_t struct {
-	Id        bson.ObjectId `bson:"_id"`
-	Username  string        `bson:"uname"`
-	Worker    string        `bson:"worker"`
-	Share     string        `bson:"sdiff"`
-	Valid     bool          `bson:"valid"`
-	NetDiff   string        `bson:"ndiff"`
-	ShareTime int64         `bson:"stime"`
+	Id         bson.ObjectId `bson:"_id"`
+	Username   string        `bson:"uname"`
+	Worker     string        `bson:"worker"`
+	Share      string        `bson:"sdiff"`
+	Valid      bool          `bson:"valid"`
+	NetDiff    string        `bson:"ndiff"`
+	ShareTime  int64         `bson:"stime"`
+	ShareState int64         `bson:"sstate"`
 }
 
 type FoundBlock_t struct {
@@ -98,21 +99,21 @@ type MinerInfo_t struct {
 }
 
 type AddrBalance_t struct {
-	Id       bson.ObjectId `bson:"_id"`
-	Username string        `bson:"uname"`
-	Balance   int64         `bson:"balance"`
+	Id         bson.ObjectId `bson:"_id"`
+	Username   string        `bson:"uname"`
+	Balance    int64         `bson:"balance"`
 	UpdateTime int64         `bson:"updatetime"`
-	Worker   string        `bson:"worker"`
+	Worker     string        `bson:"worker"`
 }
 
 type SendTx_t struct {
-	Id       bson.ObjectId `bson:"_id"`
-	TxId     string        `bson:"txid"`
-	Username string        `bson:"uname"`
-	Worker   string        `bson:"worker"`
-	Amount   int64         `bson:"amount"`
-	SendTime int64         `bson:"sendtime"`
-	TxState  int64         `bson:"txstate"` //Pending(0), InProgress(1), Cancelled(2), Completed(3), Failed(4), Registering(5)
+	Id         bson.ObjectId `bson:"_id"`
+	TxId       string        `bson:"txid"`
+	Username   string        `bson:"uname"`
+	Worker     string        `bson:"worker"`
+	Amount     int64         `bson:"amount"`
+	SendTime   int64         `bson:"sendtime"`
+	TxState    int64         `bson:"txstate"` //Pending(0), InProgress(1), Cancelled(2), Completed(3), Failed(4), Registering(5)
 	ResendFlag int64         `bson:"resendflag"`
 }
 
@@ -131,7 +132,6 @@ func (miner *Miner) insertShareToLevelDB(key, valid, netDiff string) {
 func (pool *Pool) pushShares(session *mgo.Session) {
 	var count int
 	share_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.ShareCol)
-	bulk := share_t.Bulk()
 
 	iter := pool.levelDB.NewIterator(nil, nil)
 	defer func() {
@@ -173,28 +173,18 @@ func (pool *Pool) pushShares(session *mgo.Session) {
 		}
 
 		Info.Println("pushShares Share_t username:", username, "workname:", workername, "sharetime:", sharetime)
-		shareMdb := &Share_t{Id: bson.NewObjectId(), Username: username, Worker: workername, Share: share, Valid: valid, NetDiff: netdiff, ShareTime: sharetime}
-		bulk.Insert(shareMdb)
+		id := bson.NewObjectId()
+		shareMdb := &Share_t{Id: id, Username: username, Worker: workername, Share: share, Valid: valid, NetDiff: netdiff, ShareTime: sharetime, ShareState: 0}
+		err = share_t.Insert(shareMdb)
+		if err != nil {
+			Warning.Println("bulk run error:", err)
+		}
 
 		err = pool.levelDB.Delete([]byte(key), nil)
 		if err != nil {
 			pool.openLevelDB()
 		}
-
 		count++
-		if count == 100 {
-			count = 0
-			_, err := bulk.Run()
-			if err != nil {
-				Warning.Println("bulk run error:", err)
-			}
-		}
-	}
-	if count > 0 {
-		_, err := bulk.Run()
-		if err != nil {
-			Warning.Println("bulk run error:", err)
-		}
 	}
 
 	Info.Println("pushShares", count, "finished:", time.Since(start))
@@ -309,7 +299,7 @@ func (pool *Pool) UpdateAddrBalance(session *mgo.Session) int64 {
 				if v <= 0 {
 					continue
 				}
-				v = v * (100 - cfg.PoolFeeRate) / 100
+				//v = v * (100 - cfg.PoolFeeRate) / 100
 
 				var item []AddrBalance_t
 				err := addrbalance_t.Find((bson.M{"uname": username})).All(&item)
@@ -319,14 +309,14 @@ func (pool *Pool) UpdateAddrBalance(session *mgo.Session) int64 {
 				}
 
 				if len(item) == 0 {
-					oneaddrbalance := &AddrBalance_t{Id: bson.NewObjectId(), Username: username, Balance : v, UpdateTime: time.Now().Unix(), Worker: workername}
+					oneaddrbalance := &AddrBalance_t{Id: bson.NewObjectId(), Username: username, Balance: v, UpdateTime: time.Now().Unix(), Worker: workername}
 					err = addrbalance_t.Insert(oneaddrbalance)
 					if err != nil {
 						Warning.Println("UpdateAddrBalance:addrbalance_t collection insert error:", err.Error())
 						continue
 					}
 				} else if len(item) == 1 {
-					data := bson.M{"$set": bson.M{"balance": item[0].Balance+v,"updatetime":time.Now().Unix()}}
+					data := bson.M{"$set": bson.M{"balance": item[0].Balance + v, "updatetime": time.Now().Unix()}}
 					err := addrbalance_t.UpdateId(item[0].Id, data)
 					if err != nil {
 						Warning.Println("UpdateAddrBalance:addrbalance_t.Update balance:", item[0].Balance+v, "err:", err.Error())
@@ -355,8 +345,8 @@ func (pool *Pool) SendReward(session *mgo.Session) int64 {
 	} else if len(balances) > 0 {
 		sendtx_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.SendTx)
 		var i int
-		for i=0; i< len(balances); {
-			walletbalance,_ := getWalletStatus()
+		for i = 0; i < len(balances); {
+			walletbalance, _ := getWalletStatus()
 			var ten_item_balance int64
 			ten_item_balance = 0
 			endindex := 0
@@ -365,7 +355,7 @@ func (pool *Pool) SendReward(session *mgo.Session) int64 {
 			} else {
 				endindex = i + 10
 			}
-			for j:=i;j<endindex;j++ {
+			for j := i; j < endindex; j++ {
 				ten_item_balance += balances[j].Balance
 			}
 			if walletbalance < ten_item_balance {
@@ -374,7 +364,7 @@ func (pool *Pool) SendReward(session *mgo.Session) int64 {
 			}
 
 			var txids []string
-			for k:=i;k<endindex;k++ {
+			for k := i; k < endindex; k++ {
 				txid, err := sendTx(balances[k].Balance, balances[k].Username)
 				if err != nil {
 					Warning.Println("sendReward:sendTx to:", balances[k].Username, ",amount:", balances[k].Balance, "error:", err.Error())
@@ -397,14 +387,14 @@ func (pool *Pool) SendReward(session *mgo.Session) int64 {
 
 			time.Sleep(time.Minute * 10)
 
-			for _,item := range txids {
-				txstate,err := getTxState(item)
+			for _, item := range txids {
+				txstate, err := getTxState(item)
 				if err != nil {
 					Warning.Println("sendReward:getTxState. txid:", item, "error:", err.Error())
 					continue
 				}
 				if txstate == 1 {
-					success,err := cancelTx(item)
+					success, err := cancelTx(item)
 					if err != nil {
 						Warning.Println("sendReward:cancelTx txid:", item, "error:", err.Error())
 						continue
@@ -443,8 +433,8 @@ func (pool *Pool) ReSendTxs(session *mgo.Session) int64 {
 		return 0
 	} else if len(failtxs) > 0 {
 		var i int
-		for i=0; i< len(failtxs); {
-			walletbalance,_ := getWalletStatus()
+		for i = 0; i < len(failtxs); {
+			walletbalance, _ := getWalletStatus()
 			var ten_item_amount int64
 			ten_item_amount = 0
 			endindex := 0
@@ -453,7 +443,7 @@ func (pool *Pool) ReSendTxs(session *mgo.Session) int64 {
 			} else {
 				endindex = i + 10
 			}
-			for j:=i;j<endindex;j++ {
+			for j := i; j < endindex; j++ {
 				ten_item_amount += failtxs[i].Amount
 			}
 			if walletbalance < ten_item_amount {
@@ -462,13 +452,13 @@ func (pool *Pool) ReSendTxs(session *mgo.Session) int64 {
 			}
 
 			var txids []string
-			for k:=i;k<endindex;k++ {
+			for k := i; k < endindex; k++ {
 				txid, err := sendTx(failtxs[k].Amount, failtxs[k].Username)
 				if err != nil {
 					Warning.Println("ReSendTxs:sendTx to:", failtxs[k].Username, ",amount:", failtxs[k].Amount, "error:", err.Error())
 					continue
 				}
-				data := bson.M{"$set": bson.M{"txstate": 100,"sendtime":time.Now().Unix()}}
+				data := bson.M{"$set": bson.M{"txstate": 100, "sendtime": time.Now().Unix()}}
 				err = sendtx_t.UpdateId(failtxs[k].Id, data)
 				if err != nil {
 					Warning.Println("dealFailTx:senttx_t.Update txstate:", 100, "err:", err.Error())
@@ -485,14 +475,14 @@ func (pool *Pool) ReSendTxs(session *mgo.Session) int64 {
 
 			time.Sleep(time.Minute * 10)
 
-			for _,item := range txids {
-				txstate,err := getTxState(item)
+			for _, item := range txids {
+				txstate, err := getTxState(item)
 				if err != nil {
 					Warning.Println("ReSendTxs:getTxState. txid:", item, "error:", err.Error())
 					continue
 				}
 				if txstate == 1 {
-					success,err := cancelTx(item)
+					success, err := cancelTx(item)
 					if err != nil {
 						Warning.Println("ReSendTxs:cancelTx txid:", item, "error:", err.Error())
 						continue
@@ -521,77 +511,83 @@ func (pool *Pool) pushMinerInfo(session *mgo.Session, statTime int64) {
 	pool.minersLock.RLock()
 	defer pool.minersLock.RUnlock()
 
-	share_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.ShareCol)
-	share_t_totalnum, err := share_t.Count()
-	if share_t_totalnum == 0 || err != nil {
-		Warning.Println("pushMinerInfo:share_t collection is empty or get count error.:", err)
-		return
-	}
-
-	var shares []Share_t
-	share_t.Find(bson.M{"stime": bson.M{"$gte": statTime, "$lt": statTime + cfg.RewardPeriod}}).All(&shares)
-
-	totalShare := 0
-	var shares_map map[string]int64
-	shares_map = make(map[string]int64)
-	for _, item := range shares {
-		if item.Valid == true {
-			totalShare += 1
-		}
-		_, ok := shares_map[item.Username+"."+item.Worker]
-		if ok {
-			if item.Valid == true {
-				shares_map[item.Username+"."+item.Worker] += 1
-			} else {
-				shares_map[item.Username+"."+item.Worker] += 0
-			}
-		} else {
-			if item.Valid == true {
-				shares_map[item.Username+"."+item.Worker] = 1
-			} else {
-				shares_map[item.Username+"."+item.Worker] = 0
-			}
-		}
-	}
+	minerinfo_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.MinerInfo)
 
 	foundblock_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.BlockCol)
 	Info.Println("pushMinerInfo stat time:", statTime, "statendtime:", statTime+cfg.RewardPeriod)
 	totalblocknum, err := foundblock_t.Find(bson.M{"stime": bson.M{"$gte": statTime, "$lt": statTime + cfg.RewardPeriod}}).Count()
-	if err != nil {
-		Warning.Println("foundblock_t collection is empty or get count error.:", err)
-		return
-	}
-
-	var totalReward int64
-	totalReward = cfg.OneBlockReward * int64(totalblocknum)
-	minerinfo_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.MinerInfo)
-
-	if shares == nil {
+	if err != nil || totalblocknum == 0 {
+		Warning.Println("pushMinerInfo:foundblock_t collection is empty or get count error.:", err)
 		minerinfo := &MinerInfo_t{Id: bson.NewObjectId(), Username: "", Reward: 0, StatTime: statTime + cfg.RewardPeriod, Worker: ""}
 		err := minerinfo_t.Insert(minerinfo)
 		if err != nil {
-			Warning.Println("writemdb MinerInfo_t error:", err)
+			Warning.Println("pushMinerInfo:writemdb MinerInfo_t error:", err)
 			return
 		}
-	} else {
-		for k, v := range shares_map {
-			names := strings.SplitN(k, ".", 2)
-			if len(names) == 2 {
-				username := names[0]
-				username = strings.ToLower(username)
-				workername := names[1]
-				var reward int64
-				reward = 0
-				if totalShare > 0 {
-					reward = v * totalReward / int64(totalShare)
-				}
-				minerinfo := &MinerInfo_t{Id: bson.NewObjectId(), Username: username, Reward: reward, StatTime: statTime + cfg.RewardPeriod, Worker: workername}
-				err := minerinfo_t.Insert(minerinfo)
-				if err != nil {
-					Warning.Println("writemdb MinerInfo_t error:", err)
-					return
-				}
+		return
+	}
+
+	share_t := session.DB(pool.cfg.MongoDB.DBname).C(pool.cfg.MongoDB.ShareCol)
+	var shares []Share_t
+	totalShare := 0
+	err = share_t.Find(bson.M{"valid": true, "sstate": 0}).All(&shares)
+	if err != nil || len(shares) == 0 {
+		Warning.Println("pushMinerInfo:share_t collection is empty or get count error.:", err)
+		minerinfo := &MinerInfo_t{Id: bson.NewObjectId(), Username: "", Reward: 0, StatTime: statTime + cfg.RewardPeriod, Worker: ""}
+		err := minerinfo_t.Insert(minerinfo)
+		if err != nil {
+			Warning.Println("pushMinerInfo:writemdb MinerInfo_t error:", err)
+			return
+		}
+		return
+	}
+
+	totalShare = len(shares)
+
+	var totaldiff float64
+	var shares_map map[string]float64
+	shares_map = make(map[string]float64)
+	for _, item := range shares {
+		diff, _ := strconv.ParseFloat(item.Share, 64)
+		totaldiff += diff
+		_, ok := shares_map[item.Username+"."+item.Worker]
+		if ok {
+			shares_map[item.Username+"."+item.Worker] += diff
+		} else {
+			shares_map[item.Username+"."+item.Worker] = diff
+		}
+	}
+
+	var totalReward int64
+	//totalReward, _ = strconv.ParseFloat(fmt.Sprintf("%.8f", cfg.OneBlockReward*float64(totalnum)), 64)
+	totalReward = cfg.OneBlockReward * int64(totalblocknum)
+
+	for k, v := range shares_map {
+		names := strings.SplitN(k, ".", 2)
+		if len(names) == 2 {
+			username := names[0]
+			username = strings.ToLower(username)
+			workername := names[1]
+			var reward int64
+			reward = 0
+			if totalShare > 0 {
+				reward = int64(v * float64(totalReward) / totaldiff)
+				reward = reward * (100 - cfg.PoolFeeRate) / 100
 			}
+			minerinfo := &MinerInfo_t{Id: bson.NewObjectId(), Username: username, Reward: reward, StatTime: statTime + cfg.RewardPeriod, Worker: workername}
+			err := minerinfo_t.Insert(minerinfo)
+			if err != nil {
+				Warning.Println("writemdb MinerInfo_t error:", err)
+				return
+			}
+		}
+	}
+
+	for _, item := range shares {
+		data := bson.M{"$set": bson.M{"sstate": 1}}
+		err := share_t.UpdateId(item.Id, data)
+		if err != nil {
+			Warning.Println("pushMinerInfo:share_t:", 1, "err:", err)
 		}
 	}
 }

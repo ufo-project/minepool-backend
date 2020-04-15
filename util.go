@@ -212,3 +212,22 @@ func reverseS(input string) (string, error) {
 	}
 	return sRev, nil
 }
+
+func ToFloat(compact uint32) float64 {
+	var nShift = (compact >> 24) & 0xff
+	var dDiff = float64(0x0000ffff) / (float64(compact & 0x00ffffff))
+	fmt.Println(nShift)
+	fmt.Println(dDiff)
+
+	for i := nShift; i < 30; {
+		dDiff *= 256.0
+		i++
+	}
+	fmt.Println(nShift)
+	for j := nShift; j > 30; {
+		dDiff /= 256.0
+		j--
+	}
+
+	return dDiff
+}

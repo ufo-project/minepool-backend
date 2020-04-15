@@ -125,9 +125,9 @@ func QueryWorkerHandler(res http.ResponseWriter, req *http.Request) {
 }
 
 type WorkerUsers struct {
-	Workername    string   `json:"workername"`
-	UserCount int      `json:"userCount"`
-	Users     []string `json:"users"`
+	Workername string   `json:"workername"`
+	UserCount  int      `json:"userCount"`
+	Users      []string `json:"users"`
 }
 
 func StringsContains(array []string, val string) (index int) {
@@ -156,7 +156,7 @@ func QueryUsersOfWorkerHandler(res http.ResponseWriter, req *http.Request) {
 		gPool.minersLock.RLock()
 		for miner, _ := range gPool.miners {
 			if miner.workername == workername {
-				if StringsContains(user.Users,miner.username) == -1 {
+				if StringsContains(user.Users, miner.username) == -1 {
 					user.Users = append(user.Users, miner.username)
 					user.UserCount++
 				}
@@ -225,12 +225,12 @@ func QueryUserHandler(res http.ResponseWriter, req *http.Request) {
 
 type TotalInfo struct {
 	TotalPoolPower   string `json:"totalpoolpower"`
-	TotalPower    string `json:"totalpower"`
-	TotalUsers    int    `json:"totalusers"`
-	TotalWorker   int    `json:"totalworkers"`
-	CurrentHeight int64  `json:"currentheight"`
-	CurrentDiff   string `json:"currentdiff"`
-	TotalRewards  string `json:"totalrewards"`
+	TotalPower       string `json:"totalpower"`
+	TotalUsers       int    `json:"totalusers"`
+	TotalWorker      int    `json:"totalworkers"`
+	CurrentHeight    int64  `json:"currentheight"`
+	CurrentDiff      string `json:"currentdiff"`
+	TotalRewards     string `json:"totalrewards"`
 	TotalSentRewards string `json:"totalsentrewards"`
 }
 
@@ -283,10 +283,11 @@ func QueryTotalInfoHandler(res http.ResponseWriter, req *http.Request) {
 	totalinfo.TotalPoolPower = fmt.Sprintf("%f MHash/s", totalpoolpower)
 	totalinfo.TotalUsers = len(userMap)
 
-	currdiff, _ := strconv.ParseFloat(gPool.LastJob.netDiffStr, 64)
-	totalinfo.CurrentDiff = fmt.Sprintf("%f", float64(currdiff*256))
-	totalpower = math.Pow(2, 24) * currdiff / 60 / 1024 / 1024 * 256
-	totalinfo.TotalPower = fmt.Sprintf("%f MHash/s", totalpower)
+	currdiff, _ := strconv.ParseFloat(gPool.LastJob.currDiffStr, 64)
+	totalinfo.CurrentDiff = gPool.LastJob.currDiffStr
+	//totalpower = math.Pow(2, 24) * currdiff / 60 / 1024 / 1024 * 256
+	totalpower = currdiff * 16777216 / 60 / 1000000
+	totalinfo.TotalPower = fmt.Sprintf("%.6f MHash/s", totalpower)
 	totalinfo.CurrentHeight = gPool.height - 1
 	totalinfo.TotalRewards = fmt.Sprintf("%.02f", float64(int64(blockcount)*cfg.OneBlockReward/100000000))
 	totalinfo.TotalSentRewards = fmt.Sprintf("%.02f", float64(int64(totalsentrewards)/100000000))
@@ -615,29 +616,37 @@ func QueryMinerInfoHandler(res http.ResponseWriter, req *http.Request) {
 		}
 
 		shares_t := session.DB(gPool.cfg.MongoDB.DBname).C(gPool.cfg.MongoDB.ShareCol)
-		var totalonedayvalidshares []Share_t
-		var totalvalidshares, totalinvalidshares, totalonedayshares int
+		var totalonedayshares []Share_t
+		//var totalonedayinvalidshares []Share_t
+		var totalvalidshares, totalinvalidshares int64
 		if queryFlag == true {
-			totalvalidshares, _ = shares_t.Find(bson.M{"uname": username, "valid": true}).Count()
-			totalinvalidshares, _ = shares_t.Find(bson.M{"uname": username, "valid": false}).Count()
-			shares_t.Find(bson.M{"uname": username, "valid": true, "stime": bson.M{"$gte": timeNumber - 24*3600, "$lt": timeNumber}}).All(&totalonedayvalidshares)
-			totalonedayshares = len(totalonedayvalidshares)
-			if totalvalidshares == 0 && totalinvalidshares == 0 && totalonedayshares == 0 {
-				totalvalidshares, _ = shares_t.Find(bson.M{"valid": true, "worker": workername}).Count()
-				totalinvalidshares, _ = shares_t.Find(bson.M{"worker": workername, "valid": false}).Count()
-				shares_t.Find(bson.M{"worker": workername, "valid": true, "stime": bson.M{"$gte": timeNumber - 24*3600, "$lt": timeNumber}}).All(&totalonedayvalidshares)
-				totalonedayshares = len(totalonedayvalidshares)
+			//totalvalidshares, _ = shares_t.Find(bson.M{"uname": username, "valid": true}).Count()
+			//totalinvalidshares, _ = shares_t.Find(bson.M{"uname": username, "valid": false}).Count()
+			shares_t.Find(bson.M{"uname": username, "stime": bson.M{"$gte": timeNumber - 24*3600, "$lt": timeNumber}}).All(&totalonedayshares)
+			//shares_t.Find(bson.M{"uname": username, "valid": false, "stime": bson.M{"$gte": timeNumber - 24*3600, "$lt": timeNumber}}).All(&totalonedayinvalidshares)
+			//totalonedayshares = len(totalonedayvalidshares) + len(totalonedayinvalidshares)
+			if len(totalonedayshares) == 0 {
+				//totalvalidshares, _ = shares_t.Find(bson.M{"valid": true, "worker": workername}).Count()
+				//totalinvalidshares, _ = shares_t.Find(bson.M{"worker": workername, "valid": false}).Count()
+				shares_t.Find(bson.M{"worker": workername, "stime": bson.M{"$gte": timeNumber - 24*3600, "$lt": timeNumber}}).All(&totalonedayshares)
+				//totalonedayshares = len(totalonedayvalidshares)
 			}
 		} else {
-			totalvalidshares, _ = shares_t.Find(bson.M{"uname": username, "valid": true, "worker": workername}).Count()
-			totalinvalidshares, _ = shares_t.Find(bson.M{"uname": username, "worker": workername, "valid": false}).Count()
-			shares_t.Find(bson.M{"uname": username, "valid": true, "worker": workername, "stime": bson.M{"$gte": timeNumber - 24*3600, "$lt": timeNumber}}).All(&totalonedayvalidshares)
-			totalonedayshares = len(totalonedayvalidshares)
+			//totalvalidshares, _ = shares_t.Find(bson.M{"uname": username, "valid": true, "worker": workername}).Count()
+			//totalinvalidshares, _ = shares_t.Find(bson.M{"uname": username, "worker": workername, "valid": false}).Count()
+			shares_t.Find(bson.M{"uname": username, "worker": workername, "stime": bson.M{"$gte": timeNumber - 24*3600, "$lt": timeNumber}}).All(&totalonedayshares)
+			//totalonedayshares = len(totalonedayvalidshares)
 		}
 		var totaldiff float64
-		for _, item := range totalonedayvalidshares {
+		for _, item := range totalonedayshares {
 			diff, _ := strconv.ParseFloat(item.Share, 64)
 			totaldiff += diff
+			if item.Valid == true {
+				totalvalidshares++
+			} else {
+				totalinvalidshares++
+			}
+
 		}
 		workerinfo.AvgPower = fmt.Sprintf("%.03fM/s", totaldiff/1000/1000/24/3600*4*1024*1024*1024)
 		gPool.minersLock.RLock()
@@ -656,7 +665,7 @@ func QueryMinerInfoHandler(res http.ResponseWriter, req *http.Request) {
 
 		workerinfo.ValidShares = int64(totalvalidshares)
 		workerinfo.InvalidShares = int64(totalinvalidshares)
-		totalRewards = totalRewards * (100 - cfg.PoolFeeRate) / 100
+		//totalRewards = totalRewards * (100 - cfg.PoolFeeRate) / 100
 		workerinfo.TotalRewards = fmt.Sprintf("%.08f", float64(totalRewards)/100000000)
 		workerinfo.SentRewards = fmt.Sprintf("%.08f", float64(sentRewards)/100000000)
 

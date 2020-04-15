@@ -87,6 +87,8 @@ func (pool *Pool) handleGetWork(id, prevHash, input string, height int64, nbits 
 		target := CompactToBig(nbits)
 		targetReal := new(big.Int).Div(new(big.Int).Mul(target, big100), big99)
 		netDiff := new(big.Int).Div(pow256, target).Int64()
+		diffstr := ToFloat(nbits)
+		currDiffStr := fmt.Sprintf("%.6f", float64(diffstr))
 		netDiffStr := fmt.Sprintf("%f", float64(netDiff)/4/1024/1024/1024)
 
 		pool.JobsLock.Lock()
@@ -94,12 +96,13 @@ func (pool *Pool) handleGetWork(id, prevHash, input string, height int64, nbits 
 
 		pool.Jobs = make(map[string]Job)
 		pool.LastJob = Job{
-			Input:      input,
-			Height:     height,
-			Id:         id,
-			PrevHash:   prevHash,
-			Target:     targetReal,
-			netDiffStr: netDiffStr,
+			Input:       input,
+			Height:      height,
+			Id:          id,
+			PrevHash:    prevHash,
+			Target:      targetReal,
+			netDiffStr:  netDiffStr,
+			currDiffStr: currDiffStr,
 		}
 		pool.Jobs[id] = pool.LastJob
 		pool.height = height
@@ -160,8 +163,9 @@ type Job struct {
 	Id       string
 	PrevHash string
 
-	Target     *big.Int
-	netDiffStr string
+	Target      *big.Int
+	netDiffStr  string
+	currDiffStr string
 }
 
 func (pool *Pool) broadcastNewJobs(jobid, prehash, input string) {

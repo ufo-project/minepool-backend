@@ -32,7 +32,7 @@
 	"timeout": "12000s",
 
 	"SecondsPerShare":1,
-	"WindowSize":60,
+	"WindowSize":10,
 
 	"StartDiff":50,
 	"MinDiff":256,
@@ -45,5 +45,5 @@
 	"ReSendTime":"16:00",
 	"HalveHeight":1050000,
 	"TxFee":100,
-	"PoolFeeRate":5
+	"PoolFeeRate":3
 }
