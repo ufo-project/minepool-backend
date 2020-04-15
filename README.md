@@ -37,7 +37,7 @@ After this step, a file called `wallet.db` is generated under the current path.
 
 (3) Start ufo node:
 
-    Execute ufo-node --port=20001 --treasury=treasury.bin --stratum_port=20002 --stratum_use_tls=0 --mining_threads=0 --miner_key=MINERKEY --owner_key=OWNERKEY --pass=PASSWORD
+    Execute ufo-node --port=20001 --treasury_path=treasury.bin --stratum_port=20002 --stratum_use_tls=0 --mining_threads=0 --miner_key=MINERKEY --owner_key=OWNERKEY --pass=PASSWORD
 
 Parameter Specification:
 | Parameter | Implication |
