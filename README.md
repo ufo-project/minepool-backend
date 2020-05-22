@@ -21,7 +21,7 @@ After this step, a file called `wallet.db` is generated under the current path.
 
 ## Restore wallet database files using keywords(if already has wallet.db,skip this stop)
 
-Execute `ufo-wallet restore --seed -- phrase=keywords` (keywords separated by semicolon)
+Execute `ufo-wallet restore --seed_phrase=keywords` (keywords separated by semicolon)
 
 After this step, a file called `wallet.db` is generated under the current path.
 
